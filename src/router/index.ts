@@ -4,7 +4,7 @@ import { config } from '@/shared/config';
 
 const routes: Array<RouteRecordRaw> = [
   {
-    path: '/call',
+    path: '/call/:callId',
     name: 'Home',
     component: Home,
   }
