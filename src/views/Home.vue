@@ -11,7 +11,7 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
     Timer(:callState="callState" v-if="callState===CallState.CONNECTED")
     Settings(v-if="showSettings" @update:closeSettings="showSettings=false" :call="call")
     Connection(v-if="callState===CallState.CONNECTING" @update:cancelBtn="disconnect")
-    RedialCall(v-if="callState===CallState.DISCONNECTED" @update:callBtn="createCall")
+    RedialCall(v-if="callState===CallState.DISCONNECTED && !callEnded" @update:callBtn="createCall")
     .controls(v-if="callState===CallState.CONNECTED")
       Hint(:text="micHint")
         Microphone(:call="call" @update:isMuted="changeMicHint")
@@ -61,6 +61,8 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
       const isError = ref<boolean>(false);
       const errorMessage = ref<string>('');
       const sdk = VoxImplant.getInstance();
+      
+      const callEnded = ref<boolean>(false);
       
       const checkCallLock = async () => {
         const callId = route.params.callId as string;
@@ -125,12 +127,15 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
 
       const disconnect = () => {
         call.value?.hangup();
+        callEnded.value = true;
       };
       
       const createCall = () => {
+        const callId = route.params.callId as string;
         call.value = sdk.call({
           number: config.number,
           video: { sendVideo: false, receiveVideo: false },
+          extraHeaders: { callId },
         });
         callState.value = CallState.CONNECTING;
         call.value.on(VoxImplant.CallEvents.Connected, () => {
@@ -176,6 +181,7 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
         isLoading,
         isError,
         errorMessage,
+        callEnded,
       };
     },
   });
