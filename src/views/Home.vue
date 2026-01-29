@@ -1,25 +1,25 @@
 <template lang="pug">
-  .loading(v-if="isLoading") Loading...
-  .error(v-else-if="isError")
-    | Call line is currently busy. Please try again later (about 10 minutes).
-  MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessDenied")
-  .call(v-else-if="isMicAccessGranted && !isError")
-    .settings-panel
-      .vector
-      Button(size="s" mode="primary" width="fill-container" icon="ic20-settings" @click="showSettings=true") Settings
-    .call-state
-      Timer(:callState="callState" v-if="callState===CallState.CONNECTED")
-      Settings(v-if="showSettings" @update:closeSettings="showSettings=false" :call="call")
-      Connection(v-if="callState===CallState.CONNECTING" @update:cancelBtn="disconnect")
-      RedialCall(v-if="callState===CallState.DISCONNECTED" @update:callBtn="createCall")
-      .controls(v-if="callState===CallState.CONNECTED")
-        Hint(:text="micHint")
-          Microphone(:call="call" @update:isMuted="changeMicHint")
-        Hint(text="End the call")
-          Decline(@click="disconnect")
-        Hint(text="Indicator connection")
-          ConnectionRate(:call="call")
-    .vector-horizontal
+.loading(v-if="isLoading") Loading...
+.error(v-if="isError")
+  | Call line is currently busy. Please try again later (about 10 minutes).
+MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessDenied")
+.call(v-else-if="isMicAccessGranted && !isError")
+  .settings-panel
+    .vector
+    Button(size="s" mode="primary" width="fill-container" icon="ic20-settings" @click="showSettings=true") Settings
+  .call-state
+    Timer(:callState="callState" v-if="callState===CallState.CONNECTED")
+    Settings(v-if="showSettings" @update:closeSettings="showSettings=false" :call="call")
+    Connection(v-if="callState===CallState.CONNECTING" @update:cancelBtn="disconnect")
+    RedialCall(v-if="callState===CallState.DISCONNECTED" @update:callBtn="createCall")
+    .controls(v-if="callState===CallState.CONNECTED")
+      Hint(:text="micHint")
+        Microphone(:call="call" @update:isMuted="changeMicHint")
+      Hint(text="End the call")
+        Decline(@click="disconnect")
+      Hint(text="Indicator connection")
+        ConnectionRate(:call="call")
+  .vector-horizontal
 </template>
 
 <script lang="ts">
