@@ -11,7 +11,6 @@ MicPermission(v-if="!isMicAccessGranted" :accessDenied="accessDenied")
     CheckingMic(v-if="checkingOpened" @update:checking="checkingOpened=false" :sdk="sdk")
     Connection(v-if="callState===CallState.CONNECTING" @update:cancelBtn="disconnect")
     RedialCall(v-if="callState===CallState.DISCONNECTED" @update:callBtn="createCall")
-    DtmfKeyboard(v-if="callState===CallState.CONNECTED" @update:digit="sendDigit")
     .controls(v-if="callState===CallState.CONNECTED")
       Hint(:text="micHint")
         Microphone(:call="call" @update:isMuted="changeMicHint")
@@ -35,7 +34,6 @@ MicPermission(v-if="!isMicAccessGranted" :accessDenied="accessDenied")
   import RedialCall from '@/components/RedialCall.vue';
   import MicPermission from '@/components/MicPermission.vue';
   import Settings from '@/components/Settings.vue';
-  import DtmfKeyboard from '@/components/DtmfKeyboard.vue';
   import CheckingMic from '@/components/CheckingMic.vue';
   import Timer from '@/components/Timer.vue';
   import ConnectionRate from '@/components/ConnectionRate.vue';
@@ -51,7 +49,6 @@ MicPermission(v-if="!isMicAccessGranted" :accessDenied="accessDenied")
       ConnectionRate,
       Timer,
       CheckingMic,
-      DtmfKeyboard,
       Settings,
       MicPermission,
       RedialCall,
