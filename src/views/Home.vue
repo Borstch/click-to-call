@@ -10,13 +10,13 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
   .call-state
     Timer(:callState="callState" v-if="callState===CallState.CONNECTED")
     Settings(v-if="showSettings" @update:closeSettings="showSettings=false" :call="call")
-    Connection(v-if="callState===CallState.CONNECTING" @update:cancelBtn="disconnect")
+    Connection(v-if="callState===CallState.CONNECTING" @update:cancelBtn="cancelConnecting")
     RedialCall(v-if="callState===CallState.DISCONNECTED && !callEnded" @update:callBtn="createCall")
     .controls(v-if="callState===CallState.CONNECTED")
       Hint(:text="micHint")
         Microphone(:call="call" @update:isMuted="changeMicHint")
       Hint(text="End the call")
-        Decline(@click="disconnect")
+        Decline(@click="endCall")
       Hint(text="Indicator connection")
         ConnectionRate(:call="call")
   .vector-horizontal
@@ -125,12 +125,17 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
           });
       };
 
-      const disconnect = () => {
+      const cancelConnecting = () => {
+        call.value?.hangup();
+      };
+
+      const endCall = () => {
         call.value?.hangup();
         callEnded.value = true;
       };
       
       const createCall = () => {
+        if (callEnded.value) return;
         const callId = route.params.callId as string;
         call.value = sdk.call({
           number: config.number,
@@ -169,7 +174,8 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
         callState,
         CallState,
         createCall,
-        disconnect,
+        cancelConnecting,
+        endCall,
         isMicAccessGranted,
         accessDenied,
         showSettings,
