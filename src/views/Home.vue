@@ -24,6 +24,7 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
 
 <script lang="ts">
   import { defineComponent, ref, onMounted } from 'vue';
+  import { useRoute } from 'vue-router';
   import Connection from '@/components/Connection.vue';
   import { Button, Hint } from '@voximplant/spaceui';
   import * as VoxImplant from 'voximplant-websdk';
@@ -53,6 +54,7 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
       Hint,
     },
     setup() {
+      const route = useRoute();
       const callState = ref<string>('');
       const accessDenied = ref<boolean>(false);
       const isMicAccessGranted = ref<boolean>(false);
@@ -63,14 +65,14 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
       const parameters = getParameters();
       
       const checkCallLock = async () => {
-        console.log('[LOCK] Starting lock check');
+        console.log('[LOCK] Full route:', route.fullPath);
+        console.log('[LOCK] Query params:', route.query);
         
-        const urlParams = new URLSearchParams(window.location.search);
-        const callId = urlParams.get('call_id');
-        console.log('[LOCK] call_id from query:', callId);
+        const callId = route.query.call_id as string;
+        console.log('[LOCK] call_id from route.query:', callId);
         
         if (!callId) {
-          console.error('[LOCK] No call_id in query params');
+          console.error('[LOCK] No call_id in route.query');
           isError.value = true;
           errorMessage.value = 'No call_id provided';
           isLoading.value = false;
