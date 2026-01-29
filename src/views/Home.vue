@@ -1,7 +1,7 @@
 <template lang="pug">
 .loading(v-if="isLoading") Loading...
 .error(v-if="isError")
-  | Call line is currently busy. Please try again later (about 10 minutes).
+  | {{ errorMessage }}
 MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessDenied")
 .call(v-else-if="isMicAccessGranted && !isError")
   .settings-panel
@@ -58,20 +58,33 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
       const isMicAccessGranted = ref<boolean>(false);
       const isLoading = ref<boolean>(true);
       const isError = ref<boolean>(false);
+      const errorMessage = ref<string>('');
       const sdk = VoxImplant.getInstance();
       const parameters = getParameters();
       
       const checkCallLock = async () => {
+        console.log('[LOCK] Starting lock check');
+        
         const urlParams = new URLSearchParams(window.location.search);
         const callId = urlParams.get('call_id');
+        console.log('[LOCK] call_id from query:', callId);
         
         if (!callId) {
+          console.error('[LOCK] No call_id in query params');
           isError.value = true;
+          errorMessage.value = 'No call_id provided';
           isLoading.value = false;
           return;
         }
 
+        console.log('[LOCK] Config:', {
+          lockEndpoint: config.lockEndpoint,
+          phone: config.phone,
+          number: config.number
+        });
+
         try {
+          console.log('[LOCK] Sending POST to:', config.lockEndpoint);
           const response = await fetch(config.lockEndpoint, {
             method: 'POST',
             headers: {
@@ -83,18 +96,29 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
             }),
           });
 
+          console.log('[LOCK] Response status:', response.status);
+          console.log('[LOCK] Response ok:', response.ok);
+
           if (response.status !== 200) {
+            const errorText = await response.text();
+            console.error('[LOCK] Error response:', errorText);
             isError.value = true;
+            errorMessage.value = `Lock failed: ${response.status} - ${errorText.substring(0, 100)}`;
+          } else {
+            console.log('[LOCK] Lock OK');
           }
         } catch (error) {
-          console.error('Lock check failed:', error);
+          console.error('[LOCK] Fetch error:', error);
           isError.value = true;
+          errorMessage.value = `Network error: ${error.message}`;
         } finally {
           isLoading.value = false;
+          console.log('[LOCK] Lock check finished, isError:', isError.value);
         }
       };
 
       sdk.on(VoxImplant.Events.MicAccessResult, (e) => {
+        console.log('[MIC] Access result:', e.result);
         if (e.result === true) {
           isMicAccessGranted.value = true;
         } else {
@@ -105,6 +129,7 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
       const call = ref<Call | null>(null);
       
       const initSdk = () => {
+        console.log('[SDK] Starting SDK init');
         sdk
           .init({
             micRequired: true,
@@ -113,37 +138,56 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
             progressToneCountry: 'US',
             node: config.accountNode,
           })
-          .then(() => sdk.connect())
-          .then(() => sdk.login(config.user, config.password))
           .then(() => {
+            console.log('[SDK] Init OK, connecting...');
+            return sdk.connect();
+          })
+          .then(() => {
+            console.log('[SDK] Connect OK, logging in...');
+            return sdk.login(config.user, config.password);
+          })
+          .then(() => {
+            console.log('[SDK] Login OK, creating call...');
             createCall();
+          })
+          .catch((error) => {
+            console.error('[SDK] Init failed:', error);
+            errorMessage.value = `SDK init failed: ${error.message}`;
+            isError.value = true;
           });
       };
 
       const disconnect = () => {
+        console.log('[CALL] Disconnecting');
         call.value?.hangup();
       };
       
       const createCall = () => {
+        console.log('[CALL] Creating call to:', config.number);
         call.value = sdk.call({
           number: config.number,
           video: { sendVideo: false, receiveVideo: false },
           extraHeaders: parameters,
         });
         callState.value = CallState.CONNECTING;
+        
         call.value.on(VoxImplant.CallEvents.Connected, () => {
+          console.log('[CALL] Connected');
           callState.value = CallState.CONNECTED;
         });
         call.value.on(VoxImplant.CallEvents.Disconnected, () => {
+          console.log('[CALL] Disconnected');
           callState.value = CallState.DISCONNECTED;
         });
-        call.value.on(VoxImplant.CallEvents.Failed, () => {
+        call.value.on(VoxImplant.CallEvents.Failed, (e) => {
+          console.error('[CALL] Failed:', e);
           callState.value = CallState.DISCONNECTED;
         });
       };
 
       const showSettings = ref<boolean>(false);
       const sendDigit = (digit: string) => {
+        console.log('[DTMF] Sending digit:', digit);
         call.value?.sendTone(digit);
       };
       const micHint = ref<string>('Mute');
@@ -152,9 +196,13 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
       };
 
       onMounted(async () => {
+        console.log('[APP] Mounted, starting...');
         await checkCallLock();
         if (!isError.value) {
+          console.log('[APP] Lock OK, init SDK');
           initSdk();
+        } else {
+          console.log('[APP] Lock failed, showing error');
         }
       });
 
@@ -173,6 +221,7 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
         micHint,
         isLoading,
         isError,
+        errorMessage,
       };
     },
   });
@@ -271,12 +320,14 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
     height: 100vh;
     font-size: 16px;
     color: #666;
+    flex-direction: column;
+    padding: 20px;
+    text-align: center;
+    white-space: pre-wrap;
   }
 
   .error {
-    flex-direction: column;
-    text-align: center;
-    padding: 20px;
     color: #d32f2f;
+    max-width: 400px;
   }
 </style>
