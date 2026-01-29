@@ -20,6 +20,7 @@ MicPermission(v-if="!isMicAccessGranted" :accessDenied="accessDenied")
 </template>
 
 <script lang="ts">
+  import { defineComponent, ref } from 'vue';
   import Connection from '@/components/Connection.vue';
   import { Button, Hint } from '@voximplant/spaceui';
   import * as VoxImplant from 'voximplant-websdk';
