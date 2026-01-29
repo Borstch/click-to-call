@@ -1,26 +1,29 @@
 <template lang="pug">
-MicPermission(v-if="!isMicAccessGranted" :accessDenied="accessDenied")
-.call(v-else-if="isMicAccessGranted")
-  .settings-panel
-    .vector
-    Button(size="s" mode="primary" width="fill-container" icon="ic20-settings" @click="showSettings=true") Settings
-  .call-state
-    Timer(:callState="callState" v-if="callState===CallState.CONNECTED")
-    Settings(v-if="showSettings" @update:closeSettings="showSettings=false" :call="call")
-    Connection(v-if="callState===CallState.CONNECTING" @update:cancelBtn="disconnect")
-    RedialCall(v-if="callState===CallState.DISCONNECTED" @update:callBtn="createCall")
-    .controls(v-if="callState===CallState.CONNECTED")
-      Hint(:text="micHint")
-        Microphone(:call="call" @update:isMuted="changeMicHint")
-      Hint(text="End the call")
-        Decline(@click="disconnect")
-      Hint(text="Indicator connection")
-        ConnectionRate(:call="call")
-  .vector-horizontal
+  .loading(v-if="isLoading") Loading...
+  .error(v-else-if="isError")
+    | Call line is currently busy. Please try again later (about 10 minutes).
+  MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessDenied")
+  .call(v-else-if="isMicAccessGranted && !isError")
+    .settings-panel
+      .vector
+      Button(size="s" mode="primary" width="fill-container" icon="ic20-settings" @click="showSettings=true") Settings
+    .call-state
+      Timer(:callState="callState" v-if="callState===CallState.CONNECTED")
+      Settings(v-if="showSettings" @update:closeSettings="showSettings=false" :call="call")
+      Connection(v-if="callState===CallState.CONNECTING" @update:cancelBtn="disconnect")
+      RedialCall(v-if="callState===CallState.DISCONNECTED" @update:callBtn="createCall")
+      .controls(v-if="callState===CallState.CONNECTED")
+        Hint(:text="micHint")
+          Microphone(:call="call" @update:isMuted="changeMicHint")
+        Hint(text="End the call")
+          Decline(@click="disconnect")
+        Hint(text="Indicator connection")
+          ConnectionRate(:call="call")
+    .vector-horizontal
 </template>
 
 <script lang="ts">
-  import { defineComponent, ref } from 'vue';
+  import { defineComponent, ref, onMounted } from 'vue';
   import Connection from '@/components/Connection.vue';
   import { Button, Hint } from '@voximplant/spaceui';
   import * as VoxImplant from 'voximplant-websdk';
@@ -53,8 +56,44 @@ MicPermission(v-if="!isMicAccessGranted" :accessDenied="accessDenied")
       const callState = ref<string>('');
       const accessDenied = ref<boolean>(false);
       const isMicAccessGranted = ref<boolean>(false);
+      const isLoading = ref<boolean>(true);
+      const isError = ref<boolean>(false);
       const sdk = VoxImplant.getInstance();
       const parameters = getParameters();
+      
+      const checkCallLock = async () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const callId = urlParams.get('call_id');
+        
+        if (!callId) {
+          isError.value = true;
+          isLoading.value = false;
+          return;
+        }
+
+        try {
+          const response = await fetch(config.lockEndpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              call_id: callId,
+              phone_number: config.phone
+            }),
+          });
+
+          if (response.status !== 200) {
+            isError.value = true;
+          }
+        } catch (error) {
+          console.error('Lock check failed:', error);
+          isError.value = true;
+        } finally {
+          isLoading.value = false;
+        }
+      };
+
       sdk.on(VoxImplant.Events.MicAccessResult, (e) => {
         if (e.result === true) {
           isMicAccessGranted.value = true;
@@ -62,23 +101,29 @@ MicPermission(v-if="!isMicAccessGranted" :accessDenied="accessDenied")
           accessDenied.value = true;
         }
       });
+
       const call = ref<Call | null>(null);
-      sdk
-        .init({
-          micRequired: true,
-          showDebugInfo: true,
-          progressTone: true,
-          progressToneCountry: 'US',
-          node: config.accountNode,
-        })
-        .then(() => sdk.connect())
-        .then(() => sdk.login(config.user, config.password))
-        .then(() => {
-          createCall();
-        });
+      
+      const initSdk = () => {
+        sdk
+          .init({
+            micRequired: true,
+            showDebugInfo: true,
+            progressTone: true,
+            progressToneCountry: 'US',
+            node: config.accountNode,
+          })
+          .then(() => sdk.connect())
+          .then(() => sdk.login(config.user, config.password))
+          .then(() => {
+            createCall();
+          });
+      };
+
       const disconnect = () => {
         call.value?.hangup();
       };
+      
       const createCall = () => {
         call.value = sdk.call({
           number: config.number,
@@ -96,6 +141,7 @@ MicPermission(v-if="!isMicAccessGranted" :accessDenied="accessDenied")
           callState.value = CallState.DISCONNECTED;
         });
       };
+
       const showSettings = ref<boolean>(false);
       const sendDigit = (digit: string) => {
         call.value?.sendTone(digit);
@@ -104,6 +150,14 @@ MicPermission(v-if="!isMicAccessGranted" :accessDenied="accessDenied")
       const changeMicHint = (value: string) => {
         micHint.value = value;
       };
+
+      onMounted(async () => {
+        await checkCallLock();
+        if (!isError.value) {
+          initSdk();
+        }
+      });
+
       return {
         callState,
         CallState,
@@ -117,6 +171,8 @@ MicPermission(v-if="!isMicAccessGranted" :accessDenied="accessDenied")
         call,
         changeMicHint,
         micHint,
+        isLoading,
+        isError,
       };
     },
   });
@@ -206,5 +262,21 @@ MicPermission(v-if="!isMicAccessGranted" :accessDenied="accessDenied")
     width: 318px;
     height: 0;
     border-top: 1px solid #ebedf2;
+  }
+
+  .loading, .error {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    font-size: 16px;
+    color: #666;
+  }
+
+  .error {
+    flex-direction: column;
+    text-align: center;
+    padding: 20px;
+    color: #d32f2f;
   }
 </style>

@@ -5,4 +5,6 @@ export const config = {
   number: process.env.VUE_APP_NUMBER,
   testNumber: process.env.VUE_APP_TEST_NUMBER,
   baseUrl: process.env.BASE_URL,
+  lockEndpoint: process.env.LOCK_ENDPOINT,
+  phone: process.env.PHONE,
 };
