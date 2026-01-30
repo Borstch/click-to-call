@@ -10,20 +10,20 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
   .call-state
     Timer(:callState="callState" v-if="callState===CallState.CONNECTED")
     Settings(v-if="showSettings" @update:closeSettings="showSettings=false" :call="call")
-    Connection(v-if="callState===CallState.CONNECTING" @update:cancelBtn="cancelConnecting")
+    Connection(v-if="callState===CallState.CONNECTING" @update:cancelBtn="disconnect")
     RedialCall(v-if="callState===CallState.DISCONNECTED && !callEnded" @update:callBtn="createCall")
     .controls(v-if="callState===CallState.CONNECTED")
       Hint(:text="micHint")
         Microphone(:call="call" @update:isMuted="changeMicHint")
       Hint(text="End the call")
-        Decline(@click="endCall")
+        Decline(@click="disconnect")
       Hint(text="Indicator connection")
         ConnectionRate(:call="call")
   .vector-horizontal
 </template>
 
 <script lang="ts">
-  import { defineComponent, ref, onMounted } from 'vue';
+  import { defineComponent, ref, onMounted, watch } from 'vue';
   import { useRoute } from 'vue-router';
   import Connection from '@/components/Connection.vue';
   import { Button, Hint } from '@voximplant/spaceui';
@@ -125,13 +125,8 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
           });
       };
 
-      const cancelConnecting = () => {
+      const disconnect = () => {
         call.value?.hangup();
-      };
-
-      const endCall = () => {
-        call.value?.hangup();
-        callEnded.value = true;
       };
       
       const createCall = () => {
@@ -154,6 +149,12 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
         });
       };
 
+      watch(callState, (newState) => {
+        if (newState === CallState.DISCONNECTED && !callEnded.value) {
+          callEnded.value = true;
+        }
+      });
+
       const showSettings = ref<boolean>(false);
       const sendDigit = (digit: string) => {
         call.value?.sendTone(digit);
@@ -174,8 +175,7 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
         callState,
         CallState,
         createCall,
-        cancelConnecting,
-        endCall,
+        disconnect,
         isMicAccessGranted,
         accessDenied,
         showSettings,
