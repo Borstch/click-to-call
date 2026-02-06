@@ -386,21 +386,25 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
     border-top: 1px solid #ebedf2;
   }
 
-  .loading, .error {
+  .loading,
+  .error {
     display: flex;
     justify-content: center;
     align-items: center;
-    height: 100vh;
+    min-height: 100vh;
+    width: 100%;
     font-size: 16px;
     color: #666;
     flex-direction: column;
     padding: 20px;
     text-align: center;
     white-space: pre-wrap;
+    box-sizing: border-box;
   }
 
   .error {
     color: #d32f2f;
     max-width: 400px;
+    margin: 0 auto;
   }
 </style>
