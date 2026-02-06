@@ -39,6 +39,75 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
   import Decline from '@/components/Decline.vue';
   import { config } from '@/shared/config';
 
+  type AgentSdkParams = {
+    user: string;
+    password: string;
+    phone: string;
+  };
+
+  const agentSdkParamsMap: Record<string, AgentSdkParams> = {};
+
+  const loadAgentConnections = async () => {
+    if (!config.connectionsEndpoint || !config.connectionsPassword) {
+      throw new Error('Connections configuration is not provided');
+    }
+
+    const response = await fetch(config.connectionsEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        password: config.connectionsPassword,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to load agent connections: ${errorText.substring(0, 200)}`);
+    }
+
+    const data = await response.json();
+    Object.keys(data).forEach((agentId) => {
+      const params = data[agentId];
+      if (params && params.user && params.password && params.phone) {
+        agentSdkParamsMap[agentId] = {
+          user: params.user,
+          password: params.password,
+          phone: params.phone,
+        };
+      }
+    });
+  };
+
+  const resolveAgentIdByCallId = async (callId: string): Promise<string> => {
+    if (!config.agentResolveEndpoint) {
+      throw new Error('Agent resolve endpoint is not configured');
+    }
+
+    const response = await fetch(config.agentResolveEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        call_id: callId,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to resolve agent_id: ${errorText.substring(0, 200)}`);
+    }
+
+    const data = await response.json();
+    if (!data.agent_id) {
+      throw new Error('agent_id is missing in response');
+    }
+
+    return data.agent_id as string;
+  };
+
   export default defineComponent({
     components: {
       Decline,
@@ -61,12 +130,13 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
       const isError = ref<boolean>(false);
       const errorMessage = ref<string>('');
       const sdk = VoxImplant.getInstance();
-      
+
       const callEnded = ref<boolean>(false);
-      
+      const currentAgentId = ref<string | null>(null);
+
       const checkCallLock = async () => {
         const callId = route.params.callId as string;
-        
+
         if (!callId) {
           isError.value = true;
           errorMessage.value = 'No callId provided in URL path';
@@ -75,14 +145,22 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
         }
 
         try {
-          const response = await fetch(config.lockEndpoint, {
+          const agentId = await resolveAgentIdByCallId(callId);
+          currentAgentId.value = agentId;
+
+          const agentParams = agentSdkParamsMap[agentId];
+          if (!agentParams) {
+            throw new Error('No SDK params found for resolved agent_id');
+          }
+
+          const response = await fetch(config.lockEndpoint as string, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
               call_id: callId,
-              phone_number: config.phone
+              phone_number: agentParams.phone,
             }),
           });
 
@@ -91,7 +169,7 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
             isError.value = true;
             errorMessage.value = `${errorText.substring(0, 100)}`;
           }
-        } catch (error) {
+        } catch (error: any) {
           isError.value = true;
           errorMessage.value = `Network error: ${error.message}`;
         } finally {
@@ -108,8 +186,22 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
       });
 
       const call = ref<Call | null>(null);
-      
+
       const initSdk = () => {
+        const agentId = currentAgentId.value;
+        if (!agentId) {
+          isError.value = true;
+          errorMessage.value = 'Agent id is not resolved';
+          return;
+        }
+
+        const agentParams = agentSdkParamsMap[agentId];
+        if (!agentParams) {
+          isError.value = true;
+          errorMessage.value = 'SDK params for current agent are not available';
+          return;
+        }
+
         sdk
           .init({
             micRequired: true,
@@ -119,7 +211,7 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
             node: config.accountNode,
           })
           .then(() => sdk.connect())
-          .then(() => sdk.login(config.user, config.password))
+          .then(() => sdk.login(agentParams.user, agentParams.password))
           .then(() => {
             createCall();
           });
@@ -128,14 +220,20 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
       const disconnect = () => {
         call.value?.hangup();
       };
-      
+
       const createCall = () => {
         if (callEnded.value) return;
-        const callId = route.params.callId as string;
+
+        const agentId = currentAgentId.value;
+        if (!agentId) {
+          isError.value = true;
+          errorMessage.value = 'Agent id is not resolved';
+          return;
+        }
+
         call.value = sdk.call({
           number: config.number,
           video: { sendVideo: false, receiveVideo: false },
-          extraHeaders: { callId },
         });
         callState.value = CallState.CONNECTING;
         call.value.on(VoxImplant.CallEvents.Connected, () => {
@@ -165,6 +263,15 @@ MicPermission(v-else-if="!isMicAccessGranted && !isError" :accessDenied="accessD
       };
 
       onMounted(async () => {
+        try {
+          await loadAgentConnections();
+        } catch (error: any) {
+          isError.value = true;
+          errorMessage.value = error.message || 'Failed to load agent connections';
+          isLoading.value = false;
+          return;
+        }
+
         await checkCallLock();
         if (!isError.value) {
           initSdk();
